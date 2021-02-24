@@ -96,7 +96,7 @@ Program::Program(const map<ShaderType,Shader>& shaders)
     m_separable=false;
 }
 
-unsigned Program::CompileAndLink(string& log) const
+unsigned Program::CompileAndLink(const std::string& definesString, string& log) const
 {
     vector<GLuint> shaders;
     ostringstream sLog;
@@ -113,7 +113,7 @@ unsigned Program::CompileAndLink(string& log) const
     for(int i=0;i<NUM_OF_SHADER_TYPES;i++) {
         if(m_shaders[i].src.size()>0) {
             shaders.push_back(glCreateShader(shaderTypes[i]));
-            res&=CompileShader(shaders.back(), m_shaders[i], sLog);
+            res&=CompileShader(definesString, shaderTypes[i], shaders.back(), m_shaders[i], sLog);
             glAttachShader(programId, shaders.back());
         }
     }
@@ -147,9 +147,31 @@ unsigned Program::CompileAndLink(string& log) const
     return programId;
 }
 
-int Program::CompileShader( unsigned shader, const Shader& shaderSrc, ostringstream& sLog ) const
+int Program::CompileShader(
+        const std::string& definesString, int shaderType, unsigned shader, const Shader& shaderSrc,
+        ostringstream& sLog) const
 {
-    const char* strSrc=shaderSrc.src.c_str();
+    std::string src = shaderSrc.src;
+    std::string additionalCode;
+    if(shaderType == GL_VERTEX_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_VERTEX_SHADER\n#line 0\n";
+    } else if(shaderType == GL_TESS_CONTROL_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_TESS_CONTROL_SHADER\n#line 0\n";
+    } else if(shaderType == GL_TESS_EVALUATION_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_TESS_EVALUATION_SHADER\n#line 0\n";
+    } else if(shaderType == GL_GEOMETRY_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_GEOMETRY_SHADER\n#line 0\n";
+    } else if(shaderType == GL_FRAGMENT_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_FRAGMENT_SHADER\n#line 0\n";
+    } else if(shaderType == GL_COMPUTE_SHADER) {
+        additionalCode = std::string() + definesString + "#define GL_COMPUTE_SHADER\n#line 0\n";
+    }
+
+    size_t versionStart = src.find("#version");
+    size_t versionEnd = src.find('\n', versionStart);
+    src.insert(versionEnd + 1, additionalCode);
+
+    const char* strSrc=src.c_str();
     glShaderSource(shader, 1, &strSrc, NULL);
     glCompileShader(shader);
     
@@ -191,19 +213,19 @@ string& Effect::Dir()
     return m_dir;
 }
 
-unsigned Effect::BuildProgram(const string& prog, string& log) const
+unsigned Effect::BuildProgram(const std::string& definesString, const string& prog, string& log) const
 {
     map<string,Program*>::const_iterator it=m_programs.find(prog);
     if(it==m_programs.end())
         throw "Program not found";
     
-    return it->second->CompileAndLink(log);
+    return it->second->CompileAndLink(definesString, log);
 }
 
-unsigned Effect::BuildProgram(const string& prog) const
+unsigned Effect::BuildProgram(const std::string& definesString, const string& prog) const
 {
     string trash;
-    return BuildProgram(prog, trash);
+    return BuildProgram(definesString, prog, trash);
 }
 
 ostringstream& Effect::Log()
@@ -529,7 +551,41 @@ int GLFX_APIENTRY glfxCompileProgram(int effect, const char* program)
     string slog;
     unsigned progid;
     try {
-        progid=gEffects[effect]->BuildProgram(program, slog);
+        progid=gEffects[effect]->BuildProgram("", program, slog);
+    }
+    catch(const char* err) {
+        slog+=err;
+        progid=-1;
+    }
+    catch(const string& err) {
+        slog+=err;
+        progid=-1;
+    }
+    catch(...) {
+        slog+="Error during compilation";
+        progid=-1;
+    }
+
+    gEffects[effect]->Log()<<slog;
+
+    return progid;
+}
+
+GLFXAPI int GLFX_APIENTRY glfxCompileProgramCustomDefines(
+        int effect, const char* program, const std::map<std::string, std::string>& defines)
+{
+    if((size_t)effect>=gEffects.size() || gEffects[effect]==NULL || program==NULL || !gEffects[effect]->Active())
+        return -1;
+
+    std::string definesString;
+    for (auto& it : defines) {
+        definesString += "#define " + it.first + " " + it.second + "\n";
+    }
+
+    string slog;
+    unsigned progid;
+    try {
+        progid=gEffects[effect]->BuildProgram(definesString, program, slog);
     }
     catch(const char* err) {
         slog+=err;

@@ -56,10 +56,13 @@ public:
     };
 
     Program(const map<ShaderType, Shader>& shaders);
-    unsigned CompileAndLink(string& log) const;
+    Program(const map<ShaderType, Shader>& shaders, const std::string& definesString);
+    unsigned CompileAndLink(const std::string& definesString, string& log) const;
         
 private:
-    int CompileShader(unsigned shader, const Shader& shaderSrc, ostringstream& sLog) const;
+    int CompileShader(
+            const std::string& definesString, int shaderType, unsigned shader, const Shader& shaderSrc,
+            ostringstream& sLog) const;
 
     Shader  m_shaders[NUM_OF_SHADER_TYPES];
     bool    m_separable;
@@ -108,8 +111,8 @@ class Effect {
     
 public:
     ostringstream& Log();
-    unsigned BuildProgram(const string& prog, string& log) const;
-    unsigned BuildProgram(const string& prog) const;
+    unsigned BuildProgram(const std::string& definesString, const string& prog, string& log) const;
+    unsigned BuildProgram(const std::string& definesString, const string& prog) const;
     unsigned CreateSampler(const string& sampler) const;
     const vector<string>& GetProgramList() const;
     void PopulateProgramList();
